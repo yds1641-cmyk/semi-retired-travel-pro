@@ -30,7 +30,7 @@ export default function Home() {
       return;
     }
     setSelectedId(deal.id);
-    fetch(`http://localhost:8000/ai-plan/${deal.id}`)
+    fetch(`https://semi-retired-travel-pro.onrender.com/ai-plan/${deal.id}`)
       .then(res => res.json())
       .then(data => setAiPlan(data))
       .catch(err => console.error("AI 동선 로딩 실패:", err));
