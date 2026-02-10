@@ -17,7 +17,7 @@ export default function Home() {
 
   // 데이터 불러오기
   useEffect(() => {
-    fetch(`http://localhost:8000/deals?budget=${budget}`)
+    fetch(`https://semi-retired-travel-pro.onrender.com/deals?budget=${budget}`)
       .then(res => res.json())
       .then(data => setDeals(data || []))
       .catch(err => console.error("백엔드 연결 확인 필요:", err));
