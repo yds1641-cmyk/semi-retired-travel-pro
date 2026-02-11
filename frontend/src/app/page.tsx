@@ -1,130 +1,262 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect } from 'react';
 
-// 지도는 브라우저에서만 로드되도록 설정
-const Map = dynamic(() => import('@/components/Map'), {
-  ssr: false,
-  loading: () => <div className="h-full w-full bg-slate-800 animate-pulse" />
-});
+// 지도는 클라이언트 사이드에서만 로딩 (에러 방지)
+const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
 export default function Home() {
-  const [deals, setDeals] = useState<any[]>([]);
-  const [budget, setBudget] = useState(300000);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [aiPlan, setAiPlan] = useState<any>(null);
+  // --- 1. 상태 관리 (State) ---
+  const [deals, setDeals] = useState([]);
+  const [budget, setBudget] = useState(300000); // 기본 30만원
+  const [language, setLanguage] = useState('ko'); // 언어 설정 (ko/en)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // 설정창 열기/닫기
+  const [loading, setLoading] = useState(false);
 
-  // 데이터 불러오기
+  // 설정 메뉴 상태
+  const [region, setRegion] = useState('All'); // 선호 지역
+  const [country, setCountry] = useState('All'); // 선호 국가
+  const [alarmEnabled, setAlarmEnabled] = useState(false); // 알림 설정
+
+  // 홍콩 이벤트 툴팁 상태
+  const [showEventInfo, setShowEventInfo] = useState(false);
+
+  // --- 2. 데이터 가져오기 (백엔드 통신) ---
+  // 예산, 지역, 국가가 바뀔 때마다 자동으로 실행됩니다.
   useEffect(() => {
-    fetch(`https://semi-retired-travel-pro.onrender.com/deals?budget=${budget}`)
-      .then(res => res.json())
-      .then(data => setDeals(data || []))
-      .catch(err => console.error("백엔드 연결 확인 필요:", err));
-  }, [budget]);
+    const fetchDeals = async () => {
+      setLoading(true);
+      try {
+        // 백엔드 주소 (Render) + 검색 조건 쿼리
+        // 주의: 백엔드가 region/country 필터링을 아직 지원 안 하면 무시하고 전체를 줄 수 있습니다.
+        const res = await fetch(
+          `https://semi-retired-travel-pro.onrender.com/deals?budget=${budget}&region=${region}&country=${country}`
+        );
+        const data = await res.json();
+        setDeals(data);
+      } catch (error) {
+        console.error('여행지 불러오기 실패:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleDealClick = (deal: any) => {
-    if (selectedId === deal.id) {
-      setSelectedId(null);
-      setAiPlan(null);
-      return;
-    }
-    setSelectedId(deal.id);
-    fetch(`https://semi-retired-travel-pro.onrender.com/ai-plan/${deal.id}`)
-      .then(res => res.json())
-      .then(data => setAiPlan(data))
-      .catch(err => console.error("AI 동선 로딩 실패:", err));
+    // 디바운싱 (슬라이더 과부하 방지): 0.3초 멈추면 요청
+    const timeoutId = setTimeout(() => {
+      fetchDeals();
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [budget, region, country]);
+
+  // --- 3. 이벤트 핸들러 ---
+  const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBudget(Number(e.target.value)); // 슬라이드 즉시 반영
   };
 
+  const toggleLanguage = () => {
+    setLanguage((prev) => (prev === 'ko' ? 'en' : 'ko'));
+  };
+
+  const handleEventClick = () => {
+    // 실제 예약 사이트로 이동 (새 창)
+    window.open('https://flights.cathaypacific.com/ko_KR/offers/world-of-winners.html', '_blank');
+  };
+
+  // --- 4. 화면 구성 (UI) ---
   return (
-    <main className="flex flex-col lg:flex-row h-screen w-full overflow-hidden bg-slate-900 font-sans">
+    <div className="flex flex-col h-screen bg-gray-50">
 
-      {/* 🛠️ 사이드바 (PC 좌측 고정) */}
-      <div className="w-full lg:w-[450px] h-1/2 lg:h-full bg-slate-800 z-10 flex flex-col border-r border-slate-700 order-last lg:order-first">
-
-        {/* ✅ 요청하신 새 디자인 헤더 */}
-        <div className="p-7 bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 shadow-2xl text-white shrink-0">
-          <div className="flex flex-col gap-2">
-            {/* 메인: 놀면 뭐해 여행이나 가자!! */}
-            <h1 className="text-2xl lg:text-3xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-500">
-              놀면 뭐해 여행이나 가자!!
-            </h1>
-            {/* 서브: 🎁반백수✈️거의 무료여행 (위치 이동 및 크기 확대) */}
-            <p className="text-base lg:text-lg font-bold text-white/90 tracking-tight">
-              🎁반백수✈️거의 무료여행
-            </p>
-          </div>
+      {/* === 상단 네비게이션 바 === */}
+      <header className="flex justify-between items-center p-4 bg-white shadow-sm z-20">
+        <h1 className="text-xl font-bold text-blue-600">
+          {language === 'ko' ? '✈️ 반백수 여행' : '✈️ Semi-Retired Travel'}
+        </h1>
+        <div className="flex gap-4">
+          {/* 언어 변경 버튼 */}
+          <button
+            onClick={toggleLanguage}
+            className="p-2 rounded-full hover:bg-gray-100 text-2xl"
+            title="언어 변경 / Change Language"
+          >
+            🌐
+          </button>
+          {/* 설정 메뉴 버튼 */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 rounded-full hover:bg-gray-100 text-2xl"
+            title="설정 / Settings"
+          >
+            ⚙️
+          </button>
         </div>
+      </header>
 
-        {/* 예산 필터 */}
-        <div className="p-5 bg-slate-900/40 border-b border-slate-700 shrink-0">
-          <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest">
-            <span>나의 생존 예산</span>
-            <span className="text-yellow-400 font-black">{budget.toLocaleString()}원</span>
-          </div>
-          <input
-            type="range" min="0" max="300000" step="10000" value={budget}
-            onChange={(e) => setBudget(Number(e.target.value))}
-            className="w-full h-2 accent-orange-500 cursor-pointer"
-          />
-        </div>
+      {/* === 설정 모달창 (팝업) === */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-2xl w-80">
+            <h2 className="text-lg font-bold mb-4 border-b pb-2">⚙️ 환경 설정</h2>
 
-        {/* 특가 리스트 */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {deals.length > 0 ? deals.map((deal: any) => (
-            <div key={deal.id} className="space-y-2">
-              <div
-                onClick={() => handleDealClick(deal)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer ${selectedId === deal.id ? 'border-orange-500 bg-orange-950/20' : 'bg-slate-700/40 border-slate-600 hover:border-blue-500'}`}
+            {/* 1. 선호 지역 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">선호 지역</label>
+              <select
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                className="w-full p-2 border rounded"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-[9px] bg-blue-900 text-blue-200 px-2 py-0.5 rounded-full font-bold uppercase">{deal.category || '특가'}</span>
-                  <span className="text-[10px] text-blue-400 font-bold">{selectedId === deal.id ? '닫기 ▲' : '정보보기 ▼'}</span>
-                </div>
-                <h3 className="font-bold text-sm text-white leading-tight">{deal.title}</h3>
-                <p className="text-orange-400 font-black mt-2 text-lg">{deal.price_text || '0원 ~'}</p>
+                <option value="All">🌏 전 세계 (World)</option>
+                <option value="Asia">동남아/아시아</option>
+                <option value="Europe">유럽</option>
+                <option value="NorthAmerica">북미</option>
+                <option value="SouthAmerica">남미</option>
+                <option value="Africa">아프리카</option>
+              </select>
+            </div>
+
+            {/* 2. 선호 국가 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">선호 국가</label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="All">🏳️ 전체 국가</option>
+                <option value="Japan">일본</option>
+                <option value="China">중국</option>
+                <option value="Vietnam">베트남</option>
+                <option value="UK">영국</option>
+                <option value="USA">미국</option>
+              </select>
+            </div>
+
+            {/* 3. 알림 설정 */}
+            <div className="mb-6 flex items-center justify-between">
+              <span className="text-sm font-medium">🔔 초저가 알림 받기</span>
+              <input
+                type="checkbox"
+                checked={alarmEnabled}
+                onChange={(e) => setAlarmEnabled(e.target.checked)}
+                className="w-5 h-5 accent-blue-600"
+              />
+            </div>
+
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setIsSettingsOpen(false)}
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              저장 및 닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* === 메인 콘텐츠 === */}
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+
+        {/* 사이드바 (컨트롤 패널) */}
+        <div className="w-full lg:w-[450px] bg-white p-5 overflow-y-auto shadow-lg z-10">
+
+          {/* === 홍콩 0원 항공권 이벤트 배너 === */}
+          <div
+            className="relative bg-gradient-to-r from-red-500 to-purple-600 text-white p-4 rounded-xl mb-6 cursor-pointer shadow-md transform hover:scale-105 transition-transform"
+            onMouseEnter={() => setShowEventInfo(true)}
+            onMouseLeave={() => setShowEventInfo(false)}
+            onClick={handleEventClick}
+          >
+            <h3 className="font-bold text-lg">🇭🇰 홍콩 왕복 0원!</h3>
+            <p className="text-sm opacity-90">선착순 혜택 받으러 가기 👉</p>
+
+            {/* 마우스 오버 시 뜨는 설명창 (툴팁) */}
+            {showEventInfo && (
+              <div className="absolute top-full left-0 mt-2 w-full bg-white text-gray-800 p-3 rounded-lg shadow-xl border border-gray-200 text-xs z-50">
+                <p><strong>🎁 제공처:</strong> 홍콩국제공항 (World of Winners)</p>
+                <p><strong>📝 근거:</strong> 관광 활성화 캠페인 무료 배포</p>
+                <p><strong>🚀 절차:</strong> 클릭 → 사이트 접속 → 회원가입 → 퀴즈 풀고 응모</p>
+                <p className="mt-2 text-blue-600 font-bold text-center border-t pt-1">
+                  클릭해서 예약하러 가기
+                </p>
               </div>
+            )}
+          </div>
 
-              {/* 🤖 AI 계획 섹션 (안전장치 적용) */}
-              {selectedId === deal.id && aiPlan && (
-                <div className="p-5 bg-slate-900 border border-orange-500/50 rounded-2xl space-y-5">
-                  {/* 교통비 비교 (Optional Chaining 적용으로 에러 방지) */}
-                  {aiPlan.transport && (
-                    <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                      <div className="grid grid-cols-2 bg-slate-700/50 p-2 text-[10px] font-bold text-slate-400 text-center">
-                        <span>일반 택시 요금</span>
-                        <span className="text-orange-400">{aiPlan.transport.name}</span>
-                      </div>
-                      <div className="grid grid-cols-2 p-3 text-center items-center">
-                        <span className="text-xs text-slate-500 line-through">{aiPlan.transport.taxi}</span>
-                        <span className="text-sm font-black text-white">{aiPlan.transport.price}</span>
-                      </div>
+          {/* === 나의 생존 예산 슬라이더 === */}
+          <div className="bg-gray-100 p-5 rounded-xl mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-bold text-gray-700">
+                💰 {language === 'ko' ? '나의 생존 예산' : 'My Budget'}
+              </label>
+              <span className="text-blue-600 font-bold text-lg">
+                {budget.toLocaleString()}원
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min="0"
+              max="500000" // 50만원까지 확장
+              step="10000"
+              value={budget}
+              onChange={handleBudgetChange}
+              className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>0원</span>
+              <span>25만원</span>
+              <span>50만원</span>
+            </div>
+          </div>
+
+          {/* 여행지 목록 */}
+          <h2 className="text-lg font-bold mb-3 border-b pb-2">
+            🏝️ {region === 'All' ? '추천 여행지' : `${region} 여행지`} ({deals.length}곳)
+          </h2>
+
+          {loading ? (
+            <p className="text-center text-gray-500 py-10 animate-pulse">
+              데이터를 불러오는 중입니다... 📡
+            </p>
+          ) : (
+            <div className="space-y-3 pb-20">
+              {deals.map((deal: any) => (
+                <div key={deal.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-bold text-lg">{deal.destination}</h3>
+                      <p className="text-sm text-gray-500">{deal.country}</p>
                     </div>
-                  )}
-
-                  <div className="space-y-2 border-l-2 border-slate-700 pl-3">
-                    {aiPlan.itinerary?.map((s: any, i: number) => (
-                      <div key={i} className="text-[11px] text-slate-300"><span className="text-blue-500 font-bold mr-2">{s.day}</span>{s.activity}</div>
-                    ))}
+                    <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">
+                      {deal.price.toLocaleString()}원~
+                    </span>
                   </div>
-
-                  <div className="flex flex-col gap-2">
-                    <a href={deal.link} target="_blank" className="block w-full py-3 bg-gradient-to-r from-orange-600 to-yellow-600 text-white text-center rounded-xl font-black text-xs">🚀 0원 혜택 받으러 가기</a>
-                    <a href={aiPlan.booking_link} target="_blank" className="block w-full py-3 bg-slate-700 text-white text-center rounded-xl font-bold text-xs border border-slate-600">🏠 게스트하우스 예약 (아고다)</a>
-                  </div>
+                  <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                    {deal.description}
+                  </p>
+                </div>
+              ))}
+              {deals.length === 0 && (
+                <div className="text-center py-10 text-gray-500">
+                  <p>이 예산으로 갈 수 있는 곳이 없네요 😭</p>
+                  <p className="text-sm mt-1">예산을 조금만 더 올려보세요!</p>
                 </div>
               )}
             </div>
-          )) : (
-            <div className="text-center py-10 text-slate-500 text-xs italic">데이터를 불러오는 중입니다...</div>
           )}
         </div>
-      </div>
 
-      {/* 🗺️ 지도 영역 */}
-      <div className="flex-1 h-1/2 lg:h-full relative">
-        <Map deals={deals} selectedId={selectedId} />
+        {/* 지도 영역 */}
+        <div className="flex-1 relative h-[50vh] lg:h-auto bg-gray-200">
+          <Map deals={deals} />
+          {/* 지도 위 안내 문구 */}
+          <div className="absolute top-4 left-4 bg-white/90 px-4 py-2 rounded-full shadow-lg text-sm z-10 backdrop-blur-sm">
+            🖱️ 지도를 움직여서 {region === 'All' ? '전 세계' : region} 여행지를 찾아보세요!
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
